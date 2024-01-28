@@ -1,0 +1,24 @@
+SimpLinR<- function(x = x, y  = y){
+  
+  #Throw errors if not the same length
+  if(length(x) != length(y)){
+    stop('The vectors are not the same length.')
+  }
+  
+  #Errors if not numeric
+  if(!(typeof(x) %in% c('integer', 'double')) |
+     !(typeof(y) %in% c('integer', 'double'))){
+       stop('The vectors must both be numeric.')
+     }
+  
+  mod_out<- SimpLinCpp(x,y)
+  
+  #Label the output
+  rownames(mod_out$Coefficients)<- c('b0', 'b1')
+  rownames(mod_out$SEs)<- c('b0', 'b1')
+  rownames(mod_out$Conf_Ints)<- c('b0', 'b1')
+  colnames(mod_out$Conf_Ints)<- c('Lower', 'Upper')
+  
+  #Return the output
+  return(mod_out)
+}

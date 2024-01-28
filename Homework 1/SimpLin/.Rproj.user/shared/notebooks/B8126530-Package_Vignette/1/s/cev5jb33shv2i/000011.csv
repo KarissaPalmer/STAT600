@@ -1,0 +1,6 @@
+"0","#Non-numeric entries in a vector
+SimpLinR(x = c(1,1), y = c(1, 'b'))
+"
+"2","Error in SimpLinR(x = c(1, 1), y = c(1, ""b"")) : 
+  The vectors must both be numeric.
+"

@@ -1,0 +1,169 @@
+---
+title: "STAT 623 Homework 5"
+author: "Karissa Palmer"
+date: "2023-09-27"
+output:
+  pdf_document:
+    includes:
+      in_header: preamble.tex
+  word_document: default
+---
+
+## Question 1
+
+In this problem, you will investigate and fit a geostatistical model to the data found in the file \texttt{topoDat.RData} on Canvas. These data are elevation measurements made at irregular locations. First, you will do some exploratory analysis and later you will fit a model to the data.
+
+a.) Make a useful plot of the original data. Describe any large-scale behavior you see. Do you think the data indicate stationarity or non-stationarity?
+
+*********************************************************************************
+
+**Answer:**
+
+```{r, warnings = FALSE, message = FALSE}
+load('topoDat.RData')
+library(geoR)
+library(fields)
+topoDat<-data.frame(topoDat)
+bubblePlot(topoDat$x, topoDat$y, topoDat$z, col = topo.colors(200))
+
+```
+At first glance, it does seem stationary in terms of variance. However, noticing that the smaller measurements are clustered near the top (y-axis) center (x-axis) of the graph, this may indicate that the mean is not constant throughout each location. Therefore, I assess that this is not a stationary process. 
+
+*********************************************************************************
+
+b.) Make an empirical variogram plot of the \textit{original} data. Give some thought to binning. Does the variogram plot indicate that the data are non-stationary?
+
+*********************************************************************************
+
+**Answer:** 
+
+We will look at a couple of different binning options.
+
+```{r, warning=FALSE, message = FALSE, results = 'hide'}
+empVar1 <- variog(coords = topoDat[,1:2], data = topoDat[,3]) #no bins
+empVar2<-  variog(coords = topoDat[,1:2], data = topoDat[,3], breaks = seq(0,8,1))
+empVar3<-  variog(coords = topoDat[,1:2], data = topoDat[,3], breaks = seq(0,8,0.5))
+empVar4<-  variog(coords = topoDat[,1:2], data = topoDat[,3], breaks = c(seq(0,5,2), 6,7,8))
+plot(empVar1)
+plot(empVar2)
+plot(empVar3)
+plot(empVar4)
+
+```
+After trying a few different binning options, it appears that the default does a relatively good job of expressing the information needed without being too large/small.
+
+The empirical variogram plot seems to indicate non-stationarity because we do not see a sill in the above graph. If the data were stationary, we would expect the points to reach or asymptotically approach a sill that essentially bounds the points. However, we observe the semivariance rising and dropping off for distance greater than 6. This by itself indicates that the data may not be stationary. 
+
+*********************************************************************************
+
+
+c.) Decide what (if anything) you want to do about the mean. If you decide to do nothing, defend your choice. If you decide to fit a trend of some order (linear, quadratic, etc. or some other model), defend your choice. If you fit a trend, make plots of your residuals and a plot of your fitted empirical variogram.
+
+*********************************************************************************
+
+**Answer:** If we continue with the assumption that the data is not stationary, we will estimate the mean using OLS, as follows. As noted in (a), the observations tended to be larger around the edges of the $x$ values (i.e. when $x$ was either small or large), indicating that there might be a quadratic fit component of $x$. We will keep $y$ as linear. We have the following.
+
+```{r}
+z<- topoDat[,3]
+X<- cbind(rep(1, nrow(topoDat)), topoDat[,1], topoDat[,2], topoDat[,1]^2)
+betaHat <- solve(t(X) %*% X, t(X) %*% z)
+betaHat[1,1]
+
+```
+Our mean estimate is then 967.2702. The residuals are shown in the following plot.
+
+```{r}
+pred <- X %*% betaHat
+resids <- z - pred
+bubblePlot(topoDat$x, topoDat$y, resids, col = topo.colors(200))
+```
+The fitted empirical variogram follows.
+```{r,warning=FALSE, message = FALSE,results = 'hide'}
+empVario_res <- variog(coords = cbind(topoDat$x,topoDat$y), data = resids, max.dist = 6)
+empVario_res1 <- variog(coords = cbind(topoDat$x,topoDat$y), data = resids
+                        , breaks = c(seq(0,6,0.5)))
+plot(empVario_res)
+plot(empVario_res1)
+```
+Both of these variograms reinforce the idea that the data may not be stationary.
+
+*********************************************************************************
+
+d.) Fit your empirical variogram ``by eye." Come up with an estimate of the sill, effective range, and nugget (if any). Comment on the smoothness. You can use the tool in \texttt{geoR} if you want. 
+
+*********************************************************************************
+
+**Answer:**
+
+We will use the first empirical variogram that we found in (c), the one that includes \texttt{breaks}. Since the sill is the semivariance  where the semivariance starts to be constant/level off, in our graph, that is at approximately 1000. Three would also be about effective range, since that is the distance at which the semivariance starts to taper off. Regarding the nugget, the shape of the graph indicates that an exponential covariance function may be a good fit for this. 
+
+```{r,warning=FALSE, message = FALSE, results = 'hide'}
+h<- seq(0,6,0.1)
+var_nugg1<-variofit(empVario_res1, ini.cov.pars = c(1000, 3), cov.model = "exponential"
+                    , fix.nugget = F, nugget = 100)
+var_plot <- var_nugg1$cov.pars[1] - cov.spatial(h, cov.model = "exponential"
+                                                , cov.pars = var_nugg1$cov.pars)
+plot(empVario_res1)
+lines(h, var_plot, col = 4)
+```
+I played with different nuggets that would give a good fit for a bit before settling on this having a nugget of approximately 100. 
+
+*********************************************************************************
+
+e.) Fit a variogram model to your empirical variogram. It is fine to try many models. Eventually, you will need to decide which model you will use, if you want to fix the nugget or estimate it, and how you are going to deal with any smoothness parameter of your model (if it has one). Once you have made your choices, justify/defend them. Also, choose your least squares method and defend this choice. 
+
+*********************************************************************************
+
+**Answer:** We will do the same as we did in (d), just using a few different covariance functions. 
+
+```{r, message = FALSE, results = 'hide'}
+var_nugg2<-variofit(empVario_res1, ini.cov.pars = c(1000, 3), cov.model = "gaussian"
+                    , fix.nugget = F, nugget = 100)
+var_plot2 <- var_nugg2$cov.pars[1] - cov.spatial(h, cov.model = "gaussian"
+                                                 , cov.pars = var_nugg2$cov.pars)
+
+var_nugg3<-variofit(empVario_res1, ini.cov.pars = c(1000, 3), cov.model = "matern"
+                    , fix.nugget = F, nugget = 100
+                    , fix.kappa = T, kappa = 2)
+var_plot3 <- var_nugg3$cov.pars[1] - cov.spatial(h, cov.model = "matern"
+                                                 , cov.pars = var_nugg3$cov.pars)
+
+var_nugg4<-variofit(empVario_res1, ini.cov.pars = c(1000, 3), cov.model = "gaussian"
+                    , fix.nugget = T)
+var_plot4 <- var_nugg4$cov.pars[1] - cov.spatial(h, cov.model = "gaussian"
+                                                 , cov.pars = var_nugg4$cov.pars)
+
+
+plot(empVario_res1)
+lines(h, var_plot, col = "black") #exponential from (d)
+lines(h, var_plot2, col = "red") #gaussian w/ same nugget as exponential
+lines(h, var_plot3, col = "green") #matern w/ kappa = 2
+lines(h, var_plot4, col = "blue") #gaussian w/o nugget
+
+```
+Begin by noting that the Gaussian covariance function that included a nugget does not even appear on the graph. I changed the nugget a few times to see if that would impact whether or not it showed, and it never did. Also, the Matérn covariance function's fit will differ quite significantly depending on the value of $\kappa$. Increasing the value of $\kappa$ made the fit much more linear, as displayed below.
+
+```{r, message = FALSE, results = 'hide'}
+var_nugg5<-variofit(empVario_res1, ini.cov.pars = c(1000, 3), cov.model = "matern"
+                    , fix.nugget = F, nugget = 100
+                    , fix.kappa = T, kappa = 10)
+var_plot5 <- var_nugg5$cov.pars[1] - cov.spatial(h, cov.model = "matern"
+                                                 , cov.pars = var_nugg5$cov.pars)
+
+plot(empVario_res1)
+lines(h, var_plot5, col = "green")
+```
+When $\kappa=1$ (a slight decrease from what is shown in the first graph), the fit did not change dramatically. It appears that out of the three new covariance functions applied to the variogram, the gaussian covariance function without a nugget fit the empirical variogram the best, even when considering the original exponential covariance function. The gaussian variogram model does a better job of following the initial rise in the semivariance than the exponential did.
+```{r}
+var_nugg4
+```
+\begin{itemize}
+  \item The fitted sill in our chosen model is 831.282, which is relatively close to what we had estimated by eye in (d).
+  \item The effective range is 1.155, which is slightly less than we had estimated but visually this model looks like it follows the semivariance well.
+  \item I initially tried both fixing and estimating the nugget, but found that when it was estimated, it was estimated to be zero, and ultimately decided to fix the nugget.
+  \item There was no smoothness parameter in the chosen model. 
+\end{itemize}
+Some of these decisions were based on how well the fit appeared by eye, but a portion of it was also trial and error. We choose this gaussian model because it appears to have the best fit for the data that we have, whether or not it is perfect. The least squares method we choose is weighted least squares because as $h$ increases, the variance of $\hat{\gamma}(h)$ (the semivariance) increases, and weighted least squares allows us to account for this heteroskedasticity. 
+
+
+*********************************************************************************

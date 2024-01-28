@@ -1,0 +1,865 @@
+library(fdapace)
+library(salso)
+library(ppmSuite)
+library(fields)
+library(MFPCA)
+library(dplyr)
+library(ggplot2)
+library(animation)
+library(tidyr)
+
+
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Simulations/Obs_XMap_Wide.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Simulations/Obs_YMap_Wide.RData')
+
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/X1_Clust_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/X2_Clust_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/Y1_Clust_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/Y2_Clust_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/Y3_Clust_1000.RData')
+
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/X1_SALSO_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/X2_SALSO_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/Y1_SALSO_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/Y2_SALSO_1000.RData')
+load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Data/Y3_SALSO_1000.RData')
+
+#Still going to do centered analysis for the time being b/c it is better-looking
+xs_c<-xs
+ys_c<-ys
+xs_c[,1:181]<- xs[,1:181]-rowMeans(xs[,1:181], na.rm = TRUE)
+ys_c[,1:181]<- ys[,1:181]-rowMeans(ys[,1:181], na.rm = TRUE)
+xs_c[,182]<- xs[,182]
+ys_c[,182]<- ys[,182]
+
+#Remove gpids if they have fewer than 6 observations
+
+df_na_x<- xs %>% mutate(NAVal = rowSums(!is.na(select(., -gpid))))
+
+df_na_x <- subset(df_na_x, NAVal < 5)
+
+xs_c<-xs_c[!(xs_c$gpid %in% df_na_x$gpid),]
+
+xs<-xs[!(xs$gpid %in% df_na_x$gpid),]
+
+df_na_y<- ys %>% mutate(NAVal = rowSums(!is.na(select(., -gpid))))
+
+df_na_y <- subset(df_na_y, NAVal < 5)
+
+ys_c<-ys_c[!(ys_c$gpid %in% df_na_y$gpid),]
+
+ys<-ys[!(ys$gpid %in% df_na_y$gpid),]
+
+#Now do FPCA on the resulting x and y 
+
+xs_fun<-MakeFPCAInputs(tVec = as.numeric(colnames(xs_c)[1:181]), yVec = as.matrix(xs_c[,1:181]))
+ys_fun<-MakeFPCAInputs(tVec = as.numeric(colnames(ys_c)[1:181]), yVec = as.matrix(ys_c[,1:181]))
+
+
+#perform FPCA on both
+#The default FPCA uses the following
+# 
+x_fpca_c<-FPCA(xs_fun$Ly, xs_fun$Lt)
+y_fpca_c<-FPCA(ys_fun$Ly, ys_fun$Lt)
+
+
+#Make plots of the mean functions and eigenfunctions
+plot(x_fpca_c$workGrid, x_fpca_c$mu, type = 'l'
+     , main = 'Mean Function FPCA, Xmap')
+# dev.off()
+# jpeg('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y_mu_FPCA.jpg')
+plot(y_fpca_c$workGrid, y_fpca_c$mu, type = 'l'
+     , main = 'Mean Function FPCA, Ymap')
+# dev.off()
+
+# jpeg('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/X_Eig_FPCA.jpg')
+plot(x_fpca_c$workGrid, x_fpca_c$phi[,1], type = 'l'
+     , main = 'First 2 Eigenfunctions, Xmap'
+     , ylim = c(-0.5,0.5)
+     , xlab = 'Time'
+     , ylab = 'Phi')
+lines(x_fpca_c$workGrid, x_fpca_c$phi[,2], col = 'red', lty = 'dashed')
+# dev.off()
+
+# jpeg('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y_Eig_FPCA.jpg')
+plot(x_fpca_c$workGrid, y_fpca_c$phi[,1], type = 'l'
+     , main = 'First 3 Eigenfunctions, Ymap'
+     , ylim = c(-0.6,0.6)
+     , xlab = 'Time'
+     , ylab = 'Phi')
+lines(x_fpca_c$workGrid, y_fpca_c$phi[,2], col = 'red', lty = 'dashed')
+lines(y_fpca_c$workGrid, y_fpca_c$phi[,3], col = 'blue', lty = 'longdash')
+# dev.off()
+
+
+###############################################################################################
+###############################################################################################
+#Do some predicted versus observed values
+
+times<-x_fpca_c$workGrid
+
+xs_red_c<-data.frame()
+ys_red_c<-data.frame()
+
+for (i in 1:length(x_fpca_c$xiEst[,1])){
+  xs_red_c[i,1:51]<-x_fpca_c$mu+x_fpca_c$xiEst[i,1]*x_fpca_c$phi[,1]+x_fpca_c$xiEst[i,2]*x_fpca_c$phi[,2]
+  ys_red_c[i,1:51]<-y_fpca_c$mu+y_fpca_c$xiEst[i,1]*y_fpca_c$phi[,1]+y_fpca_c$xiEst[i,2]*y_fpca_c$phi[,2]+
+    y_fpca_c$xiEst[i,3]*y_fpca_c$phi[,3]
+}
+
+
+xs_red_c$gpid<- xs_c$gpid
+colnames(xs_red_c)[1:51]<-times
+ys_red_c$gpid<- ys_c$gpid
+colnames(ys_red_c)[1:51]<-y_fpca_c$workGrid
+
+# save(xs_red_c, file = '/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Red_XMap_Long_C.Rda')
+# save(ys_red_c, file = '/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Red_YMap_Long_C.Rda')
+
+#going through to find the differences between a given observation and its predicted for each time point
+funx_list_c<-list()
+obsx_list_c<-list()
+funy_list_c<-list()
+obsy_list_c<-list()
+na_fun<-function(x){
+  any(!is.na(x))
+}
+
+for (i in 1:nrow(xs_c)){
+  obsx_list_c[[i]]<- xs_c[i,-182] %>% select(where(na_fun))
+  funx_list_c[[i]]<- approxfun(x = as.numeric(colnames(xs_red_c)), y = xs_red_c[i,])
+  obsy_list_c[[i]]<- ys_c[i,-182] %>% select(where(na_fun))
+  funy_list_c[[i]]<- approxfun(x = as.numeric(colnames(ys_red_c)), y = ys_red_c[i,])
+}
+
+x_approx_c<-list()
+y_approx_c<-list()
+
+for (i in 1:nrow(xs_c)){
+  x_approx_c[[i]]<-funx_list_c[[i]](c(as.numeric(colnames(obsx_list_c[[i]]))))
+  y_approx_c[[i]]<-funy_list_c[[i]](c(as.numeric(colnames(obsy_list_c[[i]]))))
+}
+
+
+xs_diff_c<- data.frame()
+ys_diff_c<- data.frame()
+
+
+for (i in 1:nrow(xs_c)){
+  xs_diff_c[i,1]<-sum(abs(obsx_list_c[[i]]-x_approx_c[[i]]))
+  ys_diff_c[i,1]<-sum(abs(obsy_list_c[[i]]-y_approx_c[[i]]))
+}
+
+maxx_c<-sort(xs_diff_c$V1, index.return=TRUE, decreasing=TRUE)
+maxy_c<-sort(ys_diff_c$V1, index.return=TRUE, decreasing=TRUE)
+
+pred_t_c<- as.numeric(x_fpca_c$workGrid)
+
+
+setwd('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/')
+for (i in c(maxx_c[[2]][4308:4313])){
+  jpeg(paste(i, 'X_ObsApprox.jpg', sep = ''))
+  plot(pred_t_c, xs_red_c[i,1:51], type = "l", ylim = c(-15,20.5))
+  points(as.numeric(colnames(xs_c)[1:151]),xs_c[i,1:151], type = 'p', col = 'red')
+  dev.off()
+}
+
+for (i in c(maxy_c[[2]][4308:4313])){
+  jpeg(paste(i, 'Y_ObsApprox.jpg', sep = ''))
+  plot(pred_t_c, ys_red_c[i,1:51], type = "l", ylim = c(-10,6))
+  points(as.numeric(colnames(ys_c)[1:151]),ys_c[i,1:151], type = 'p', col = 'red')
+  dev.off()
+}
+
+
+################################################################################
+################################################################################
+
+#Do the clustering
+
+xs_red_c[,1:51]<- xs_red_c[,1:51]+rowMeans(xs[,1:181], na.rm = TRUE)
+ys_red_c[,1:51]<- ys_red_c[,1:51]+rowMeans(ys[,1:181], na.rm = TRUE)
+
+#that was mildly unnecessary, let's get the scores for each.
+clust_dat_c<- merge(xs_red_c[,c(4,52)], ys_red_c[,c(4,52)], by = 'gpid')
+
+colnames(clust_dat_c)[2:3]<- c('xmap', 'ymap')
+# clust_dat_c[,2]<- clust_dat_c[,2]+rowMeans(xs[,1:181], na.rm = TRUE)
+# clust_dat_c[,3]<- clust_dat_c[,3]+rowMeans(ys[,1:181], na.rm = TRUE)
+
+clust_dat_c$score_x1<- x_fpca_c$xiEst[,1]
+clust_dat_c$score_x2<- x_fpca_c$xiEst[,2]
+clust_dat_c$score_y1<- y_fpca_c$xiEst[,1]
+clust_dat_c$score_y2<- y_fpca_c$xiEst[,2]
+clust_dat_c$score_y3<- y_fpca_c$xiEst[,3]
+
+# save(clust_dat_c, file = 'Centered_Clusters.Rda')
+
+###################################################################################
+###################################################################################
+#Cluster now based on the scores
+bubblePlot(clust_dat_c$xmap, clust_dat_c$ymap, clust_dat_c$score_x1, col = rainbow(250))
+
+set.seed(23)
+
+ind<-sample(1:nrow(xs), 1000, replace = FALSE)
+ind2<-sample(1:8811, 1000, replace = FALSE)
+X1<-clust_dat_c[ind,4]
+
+s_coords1<- clust_dat_c[ind,c(2,3)]
+#standardize spatial coordinates
+m<- dim(s_coords1)[1]
+smn <- apply(s_coords1,2,mean)
+ssd <- apply(s_coords1,2,sd)
+s_std <- t((t(s_coords1) - smn)/ssd)
+# Create a grid of prediction locations
+np <- 50
+sp <- expand.grid(seq(min(s_coords1[,1]), max(s_coords1[,1]),length=np),
+                  seq(min(s_coords1[,2]), max(s_coords1[,2]), length=np))
+sp_std <- t((t(sp) - smn)/ssd) # standardized prediction spatial coordinates
+niter <- 60000
+nburn <- 40000
+nthin <- 10
+nout <- (niter - nburn)/nthin
+out1c <- sppm(y=X1,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+clustx1<-salso(out1c$Si)
+
+# jpeg('Figures/X1_Clust1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, clustx1, col = rainbow(length(unique(clustx1)))
+           , main = 'PC 1 XMAP All Time')
+# dev.off()
+
+###################################################################################
+###################################################################################
+
+X2<-clust_dat_c[ind,5]
+
+out2c <- sppm(y=X2,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+clustx2<-salso(out2c$Si)
+
+# jpeg('Figures/X2_Clust1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, clustx2, col = rainbow(length(unique(clustx2)))
+           , main = 'PC 2 XMAP All Time')
+# dev.off()
+###################################################################################
+###################################################################################
+
+Y1<- clust_dat_c[ind,6]
+
+out3c <- sppm(y=Y1,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+clusty1<-salso(out3c$Si)
+
+# jpeg('Figures/Y1_Clust1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, clusty1, col = rainbow(length(unique(clusty1)))
+           , main = 'PC 1 YMAP All Time')
+# dev.off()
+###################################################################################
+###################################################################################
+
+Y2<- clust_dat_c[ind,7]
+
+out4c <- sppm(y=Y2,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+clusty2<-salso(out4c$Si)
+
+# jpeg('Figures/Y2_Clust1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, clusty2, col = rainbow(length(unique(clusty2)))
+           , main = 'PC 2 YMAP All Time')
+# dev.off()
+###################################################################################
+###################################################################################
+
+Y3<- clust_dat_c[ind,8]
+
+out5c <- sppm(y=Y3,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+clusty3<-salso(out5c$Si)
+
+# jpeg('Figures/Y3_Clust1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, clusty3, col = rainbow(length(unique(clusty3)))
+           , main = 'PC 3 YMAP All Time')
+# dev.off()
+
+###################################################################################
+###################################################################################
+###################################################################################
+
+setwd('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis')
+# save(out1c, file = 'Data/X1_Clust_1000.RData')
+# save(out2c, file = 'Data/X2_Clust_1000.RData')
+# save(out3c, file = 'Data/Y1_Clust_1000.RData')
+# save(out4c, file = 'Data/Y2_Clust_1000.RData')
+# save(out5c, file = 'Data/Y3_Clust_1000.RData')
+# 
+# save(clustx1, file = 'Data/X1_SALSO_1000.RData')
+# save(clustx2, file = 'Data/X2_SALSO_1000.RData')
+# save(clusty1, file = 'Data/Y1_SALSO_1000.RData')
+# save(clusty2, file = 'Data/Y2_SALSO_1000.RData')
+# save(clusty3, file = 'Data/Y3_SALSO_1000.RData')
+
+###################################################################################
+###################################################################################
+###################################################################################
+
+#Now do the vector plots and the gifs
+
+temp_df<-merge(xs_red_c, ys_red_c, by = 'gpid')
+colnames(temp_df)<- as.character(colnames(temp_df))
+
+clust_subset<- clust_dat_c[ind,]
+rownames(clust_subset)<- 1:nrow(clust_subset)
+x1_part<- as.data.frame(clustx1)
+temp_merge<- merge(x1_part, clust_subset, by.x = 0, by.y=0)
+
+x1temp<- merge(temp_merge, temp_df, by = 'gpid')
+
+xs_long<- xs_red_c[ind,] %>% pivot_longer(cols = as.character(51.65012):as.character(72.14603))
+ys_long<- ys_red_c[ind,] %>% pivot_longer(cols = as.character(51.65012):as.character(72.14603))
+#x1temp_long<- 
+colnames(xs_long)[2:3]<- c('time', 'xmap')
+colnames(ys_long)[2:3]<- c('time', 'ymap')
+
+
+#x2
+x2_part<- as.data.frame(clustx2)
+temp_merge2<- merge(x2_part, clust_subset, by.x = 0, by.y=0)
+
+x2temp<- merge(temp_merge2, temp_df, by = 'gpid')
+
+
+#y1
+y1_part<- as.data.frame(clusty1)
+temp_merge2<- merge(y1_part, clust_subset, by.x = 0, by.y=0)
+
+y1temp<- merge(temp_merge2, temp_df, by = 'gpid')
+
+
+#y2
+y2_part<- as.data.frame(clusty2)
+temp_merge2<- merge(y2_part, clust_subset, by.x = 0, by.y=0)
+
+y2temp<- merge(temp_merge2, temp_df, by = 'gpid')
+
+
+#y3
+y3_part<- as.data.frame(clusty3)
+temp_merge2<- merge(y3_part, clust_subset, by.x = 0, by.y=0)
+
+y3temp<- merge(temp_merge2, temp_df, by = 'gpid')
+
+
+x1clust_temp<- merge(x1_part, clust_subset, by.x=0, by.y=0)
+x1clust_temp<- x1clust_temp[,2:3]
+
+x2clust_temp<- merge(x2_part, clust_subset, by.x=0, by.y=0)
+x2clust_temp<- x2clust_temp[,2:3]
+
+y1clust_temp<- merge(y1_part, clust_subset, by.x=0, by.y=0)
+y1clust_temp<- y1clust_temp[,2:3]
+
+y2clust_temp<- merge(y2_part, clust_subset, by.x=0, by.y=0)
+y2clust_temp<- y2clust_temp[,2:3]
+
+y3clust_temp<- merge(y3_part, clust_subset, by.x=0, by.y=0)
+y3clust_temp<- y3clust_temp[,2:3]
+
+xy_long<- merge(xs_long, ys_long, by = c('gpid', 'time'))
+
+xy_long<- merge(xy_long, clust_subset[,c(1,4,5,6,7,8)], by = 'gpid')
+
+xy_long_x1<- merge(xy_long, x1clust_temp, by = 'gpid')
+xy_long_x2<- merge(xy_long, x2clust_temp, by = 'gpid')
+xy_long_y1<- merge(xy_long, y1clust_temp, by = 'gpid')
+xy_long_y2<- merge(xy_long, y2clust_temp, by = 'gpid')
+xy_long_y3<- merge(xy_long, y3clust_temp, by = 'gpid')
+
+
+xy_long_x1_t<-xy_long_x1[order(xy_long_x1$time),]
+xy_long_x2_t<-xy_long_x2[order(xy_long_x2$time),]
+xy_long_y1_t<-xy_long_y1[order(xy_long_y1$time),]
+xy_long_y2_t<-xy_long_y2[order(xy_long_y2$time),]
+xy_long_y3_t<-xy_long_y3[order(xy_long_y3$time),]
+
+
+#Make the stationary plos for now
+
+# setwd('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis')
+
+# jpeg('Figures/X1_Arrows.jpg')
+ggplot(xy_long_x1_t, aes(x = xmap, y = ymap, group = (gpid)))+
+  #geom_point()+
+  geom_path(aes(color = factor(x)), arrow = arrow(length = unit(0.15,'cm')))+
+  xlim(min(xy_long_x1_t$xmap),max(xy_long_x1_t$xmap))+ylim(min(xy_long_x1_t$ymap),max(xy_long_x1_t$ymap))+
+  labs(title = 'X1 Movement Clustered')
+# dev.off()
+
+# jpeg('Figures/X2_Arrows.jpg')
+ggplot(xy_long_x2_t, aes(x = xmap, y = ymap, group = (gpid)))+
+  #geom_point()+
+  geom_path(aes(color = factor(x)), arrow = arrow(length = unit(0.15,'cm')))+
+  xlim(min(xy_long_x1_t$xmap),max(xy_long_x1_t$xmap))+ylim(min(xy_long_x1_t$ymap),max(xy_long_x1_t$ymap))+
+  labs(title = 'X2 Movement Clustered')
+# dev.off()
+
+# jpeg('Figures/Y1_Arrows.jpg')
+ggplot(xy_long_y1_t, aes(x = xmap, y = ymap, group = (gpid)))+
+  #geom_point()+
+  geom_path(aes(color = factor(x)), arrow = arrow(length = unit(0.15,'cm')))+
+  xlim(min(xy_long_x1_t$xmap),max(xy_long_x1_t$xmap))+ylim(min(xy_long_x1_t$ymap),max(xy_long_x1_t$ymap))+
+  labs(title = 'Y1 Movement Clustered')
+# dev.off()
+
+# jpeg('Figures/Y2_Arrows.jpg')
+ggplot(xy_long_y2_t, aes(x = xmap, y = ymap, group = (gpid)))+
+  #geom_point()+
+  geom_path(aes(color = factor(x)), arrow = arrow(length = unit(0.15,'cm')))+
+  xlim(min(xy_long_x1_t$xmap),max(xy_long_x1_t$xmap))+ylim(min(xy_long_x1_t$ymap),max(xy_long_x1_t$ymap))+
+  labs(title = 'Y2 Movement Clustered')
+# dev.off()
+
+# jpeg('Figures/Y3_Arrows.jpg')
+ggplot(xy_long_y3_t, aes(x = xmap, y = ymap, group = (gpid)))+
+  #geom_point()+
+  geom_path(aes(color = factor(x)), arrow = arrow(length = unit(0.15,'cm')))+
+  xlim(min(xy_long_x1_t$xmap),max(xy_long_x1_t$xmap))+ylim(min(xy_long_x1_t$ymap),max(xy_long_x1_t$ymap))+
+  labs(title = 'Y3 Movement Clustered')
+# dev.off()
+
+
+##########################################################################
+##########################################################################
+
+#Make gifs
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+# ani.options(convert='c:/"Program Files"/ImageMagick-7.0.8-Q16/convert.exe')
+saveGIF({
+  for (i in 11:60){
+    print(x1temp %>% ggplot(aes(x1temp[[i]], x1temp[[i+51]], color = factor(x1temp[[3]])))+
+            geom_segment(aes(xend = x1temp[[i]]+(x1temp[[i+1]]-x1temp[[i]])/50
+                             , yend = x1temp[[i+51]]+(x1temp[[i+52]]-x1temp[[i+51]])/50)
+                         , arrow = arrow(length = unit(0.2, "cm")), size = 0.45)+
+            xlim(min(x1temp$xmap),max(x1temp$xmap))+ylim(min(x1temp$ymap),max(x1temp$ymap)))
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/X1_1000_2.gif"
+,ani.width = 1500, ani.height = 1000)
+
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 11:60){
+    print(x2temp %>% ggplot(aes(x2temp[[i]], x2temp[[i+51]], color = factor(x2temp[[3]])))+
+            geom_segment(aes(xend = x2temp[[i]]+(x2temp[[i+1]]-x2temp[[i]])/50
+                             , yend = x2temp[[i+51]]+(x2temp[[i+52]]-x2temp[[i+51]])/50)
+                         , arrow = arrow(length = unit(0.2, "cm")), size = 0.45)+
+            xlim(min(x2temp$xmap),max(x2temp$xmap))+ylim(min(x2temp$ymap),max(x2temp$ymap)))
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/X2_1000_2.gif"
+,ani.width = 1500, ani.height = 1000)
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 11:60){
+    print(y1temp %>% ggplot(aes(y1temp[[i]], y1temp[[i+51]], color = factor(y1temp[[3]])))+
+            geom_segment(aes(xend = y1temp[[i]]+(y1temp[[i+1]]-y1temp[[i]])/50
+                             , yend = y1temp[[i+51]]+(y1temp[[i+52]]-y1temp[[i+51]])/50)
+                         , arrow = arrow(length = unit(0.2, "cm")), size = 0.45)+
+            xlim(min(y1temp$xmap),max(y1temp$xmap))+ylim(min(y1temp$ymap),max(y1temp$ymap)))
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y1_1000_2.gif"
+,ani.width = 1500, ani.height = 1000)
+
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 11:60){
+    print(y2temp %>% ggplot(aes(y2temp[[i]], y2temp[[i+51]], color = factor(y2temp[[3]])))+
+            geom_segment(aes(xend = y2temp[[i]]+(y2temp[[i+1]]-y2temp[[i]])/50
+                             , yend = y2temp[[i+51]]+(y2temp[[i+52]]-y2temp[[i+51]])/50)
+                         , arrow = arrow(length = unit(0.2, "cm")), size = 0.45)+
+            xlim(min(y2temp$xmap),max(y2temp$xmap))+ylim(min(y2temp$ymap),max(y2temp$ymap)))
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y2_1000_2.gif"
+,ani.width = 1500, ani.height = 1000)
+
+
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 11:60){
+    print(y3temp %>% ggplot(aes(y3temp[[i]], y3temp[[i+51]], color = factor(y3temp[[3]])))+
+            geom_segment(aes(xend = y3temp[[i]]+(y3temp[[i+1]]-y3temp[[i]])/50
+                             , yend = y3temp[[i+51]]+(y3temp[[i+52]]-y3temp[[i+51]])/50)
+                         , arrow = arrow(length = unit(0.2, "cm")), size = 0.45)+
+            xlim(min(y3temp$xmap),max(y3temp$xmap))+ylim(min(y3temp$ymap),max(y3temp$ymap)))
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y3_1000_2.gif"
+,ani.width = 1500, ani.height = 1000)
+
+
+
+##########################################################################
+##########################################################################
+##########################################################################
+##########################################################################
+#Doing the gifs and arrows of the actual paths
+
+xy_all<- merge(xs, ys, by = 'gpid')
+
+clust_subset<- clust_dat_c[ind,]
+rownames(clust_subset)<- 1:nrow(clust_subset)
+
+xy_all<-xy_all[ind,]
+
+xy_all$x1clust<-x1_part$x
+xy_all$x2clust<-x2_part$x
+xy_all$y1clust<-y1_part$x
+xy_all$y2clust<-y2_part$x
+xy_all$y3clust<-y3_part$x
+
+
+#just make sure it works
+xy_all %>% ggplot(aes(x = xy_all[[2]], y = xy_all[[183]]))+
+  geom_point(aes(color = factor(x1clust)))
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 2:182){
+    print(xy_all %>% ggplot(aes(xy_all[[i]], xy_all[[i+181]], color = factor(xy_all[[364]])))+
+            geom_point()+
+            xlim(-2320,-1436)+
+            ylim(-353,951))+
+      labs(title = 'X1 True Movement')
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/X1_True_1000.gif"
+,ani.width = 1500, ani.height = 1000)
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 2:182){
+    print(xy_all %>% ggplot(aes(xy_all[[i]], xy_all[[i+181]], color = factor(xy_all[[365]])))+
+            geom_point()+
+            xlim(-2320,-1436)+
+            ylim(-353,951))+
+      labs(title = 'X2 True Movement')
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/X2_True_1000.gif"
+,ani.width = 1500, ani.height = 1000)
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 2:182){
+    print(xy_all %>% ggplot(aes(xy_all[[i]], xy_all[[i+181]], color = factor(xy_all[[366]])))+
+            geom_point()+
+            xlim(-2320,-1436)+
+            ylim(-353,951))+
+      labs(title = 'Y1 True Movement')
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y1_True_1000.gif"
+,ani.width = 1500, ani.height = 1000)
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 2:182){
+    print(xy_all %>% ggplot(aes(xy_all[[i]], xy_all[[i+181]], color = factor(xy_all[[367]])))+
+            geom_point()+
+            xlim(-2320,-1436)+
+            ylim(-353,951))+
+      labs(title = 'Y2 True Movement')
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y2_True_1000.gif"
+,ani.width = 1500, ani.height = 1000)
+
+ani.options(autoplay=FALSE)
+ani.options(loop=0)
+saveGIF({
+  for (i in 2:182){
+    print(xy_all %>% ggplot(aes(xy_all[[i]], xy_all[[i+181]], color = factor(xy_all[[368]])))+
+            geom_point()+
+            xlim(-2320,-1436)+
+            ylim(-353,951))+
+      labs(title = 'Y3 True Movement')
+  }
+}, movie.name = "/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Figures/Y3_True_1000.gif"
+,ani.width = 1500, ani.height = 1000)
+
+
+
+
+
+xy_all %>% ggplot(aes(xy_all[[2]], xy_all[[2+181]], color = factor(xy_all[[364]])))+
+  geom_point()
+  xlim(-2320,85488)+
+  ylim(-353,85488)
+
+ggplot(xy_all, aes(x = xmap, y = ymap, group = (gpid)))+
+  #geom_point()+
+  geom_path(aes(color = factor(x)), arrow = arrow(length = unit(0.15,'cm')))+
+  xlim(min(xy_long_x1_t$xmap),max(xy_long_x1_t$xmap))+ylim(min(xy_long_x1_t$ymap),max(xy_long_x1_t$ymap))+
+  labs(title = 'Y3 Movement Clustered')
+
+
+##########################################################################################################
+##########################################################################################################
+##########################################################################################################
+#Doing the MFPCA on the estimates now
+
+# load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Red_XMap_Long_C.Rda')
+# load('/Users/KarissaPalmer/Library/CloudStorage/OneDrive-Colostate/ICE_project/KP/Data_Analysis/Red_YMap_Long_C.Rda')
+
+library(MFPCA)
+
+obsx<- funData(argvals = list(as.numeric(colnames(xs_red_c)[1:51])), X = as.matrix(xs_red_c[,1:51]))
+obsy<- funData(argvals = list(as.numeric(colnames(ys_red_c)[1:51])), X = as.matrix(ys_red_c[,1:51]))
+
+obs<- multiFunData(list(obsx, obsy))
+
+mf<-MFPCA(obs, M = 3, uniExpansions = list(list(type = "fda"), list(type = "fda")))
+
+mf_red_x<- data.frame()
+mf_red_y<- data.frame()
+
+for (i in 1:length(mf$scores[,1])){
+  mf_red_x[i,1:51]<- mf$meanFunction[[1]]@X+mf$scores[i,1]*mf$functions[[1]]@X[1,]+
+    mf$scores[i,2]*mf$functions[[1]]@X[2,]+mf$scores[i,3]*mf$functions[[1]]@X[3,]
+  mf_red_y[i,1:51]<- mf$meanFunction[[2]]@X+mf$scores[i,1]*mf$functions[[2]]@X[1,]+
+    mf$scores[i,2]*mf$functions[[2]]@X[2,]+mf$scores[i,3]*mf$functions[[2]]@X[3,]
+}
+
+
+mf_red_x$gpid<- xs_c$gpid
+colnames(mf_red_x)[1:51]<-colnames(xs_red_c)[1:51]
+mf_red_y$gpid<- ys_c$gpid
+colnames(mf_red_y)[1:51]<-colnames(ys_red_c)[1:51]
+
+mf_red_x[,1:51]<-mf_red_x[,1:51]+rowMeans(xs[,1:181], na.rm = TRUE)
+mf_red_y[,1:51]<-mf_red_y[,1:51]+rowMeans(ys[,1:181], na.rm = TRUE)
+
+
+
+clust_dat_m<- merge(mf_red_x[,c(4,52)], mf_red_y[,c(4,52)], by = 'gpid')
+
+colnames(clust_dat_m)[2:3]<- c('xmap', 'ymap')
+clust_dat_m[,2]<- clust_dat_m[,2]
+clust_dat_m[,3]<- clust_dat_m[,3]
+
+clust_dat_m$score1<- mf$scores[,1]
+clust_dat_m$score2<-mf$scores[,2]
+clust_dat_m$score3<- mf$scores[,3]
+
+##########################################################################
+##########################################################################
+#Now cluster the MFPCA scores
+#also, check to see if this converges with the given number of iterations
+#check the convergence
+library(coda)
+
+set.seed(23)
+
+ind<-sample(1:8811, 1000, replace = FALSE)
+S1<-clust_dat_m[ind,4]
+
+s_coords_m<- clust_dat_m[ind,c(2,3)]
+#standardize spatial coordinates
+m<- dim(s_coords_m)[1]
+smn <- apply(s_coords_m,2,mean)
+ssd <- apply(s_coords_m,2,sd)
+s_std <- t((t(s_coords_m) - smn)/ssd)
+# Create a grid of prediction locations
+np <- 50
+sp <- expand.grid(seq(min(s_coords_m[,1]), max(s_coords_m[,1]),length=np),
+                  seq(min(s_coords_m[,2]), max(s_coords_m[,2]), length=np))
+sp_std <- t((t(sp) - smn)/ssd) # standardized prediction spatial coordinates
+niter <- 60000
+nburn <- 40000
+nthin <- 10
+nout <- (niter - nburn)/nthin
+out1m <- sppm(y=S1,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin
+              , modelPriors = c(1,50,25,25))
+
+out1m2<- sppm(y=S1,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin
+              , modelPriors = c(1,50,25,25))
+out1m3<- sppm(y=S1,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin
+              , modelPriors = c(1,50,25,25))
+out1m4<- sppm(y=S1,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin
+              , modelPriors = c(1,50,25,25))
+
+sig1<- as.mcmc(out1m$sig2)
+sig2<- as.mcmc(out1m2$sig2)
+sig3<- as.mcmc(out1m3$sig2)
+sig4<- as.mcmc(out1m4$sig2)
+huh<-mcmc.list(sig1, sig2,sig3,sig4)
+gel<-gelman.diag(huh, multivariate = FALSE)
+traceplot(sig2)
+
+clustm1<-salso(out1m$Si)
+
+bubblePlot(s_coords_m$xmap, s_coords_m$ymap, clustm1, col = rainbow(length(unique(clustm1))), size = 0.7
+           , main = 'Clustered PC 1, MFPCA')
+
+##########################################################################################
+##########################################################################################
+##########################################################################################
+
+S2<-clust_dat_m[ind,5]
+
+out2m <- sppm(y=S2,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+
+# out2m2<- sppm(y=S2,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+# out2m3<- sppm(y=S2,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+# out2m4<- sppm(y=S2,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+# 
+# sig12<- as.mcmc(out2m$sig2)
+# sig22<- as.mcmc(out2m2$sig2)
+# sig32<- as.mcmc(out2m3$sig2)
+# sig42<- as.mcmc(out2m4$sig2)
+# huh2<-mcmc.list(sig12, sig22,sig32,sig42)
+# gel2<-gelman.diag(huh2, multivariate = FALSE)
+
+clustm2<-salso(out2m$Si)
+
+bubblePlot(s_coords_m$xmap, s_coords_m$ymap, clustm2, col = rainbow(length(unique(clustm2))), size = 0.7
+           , main = 'Clustered PC 2, MFPCA')
+
+##########################################################################################
+##########################################################################################
+##########################################################################################
+
+S3<-clust_dat_m[ind,6]
+
+out3m <- sppm(y=S3,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+
+
+# out3m2<- sppm(y=S3,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+# out3m3<- sppm(y=S3,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+# out3m4<- sppm(y=S3,s=s_std,s.pred=sp_std,cohesion=4, M=1, draws=niter, burn=nburn, thin=nthin)
+# 
+# sig13<- as.mcmc(out3m$sig2)
+# sig23<- as.mcmc(out3m2$sig2)
+# sig33<- as.mcmc(out3m3$sig2)
+# sig43<- as.mcmc(out3m4$sig2)
+# huh3<-mcmc.list(sig13, sig23,sig33,sig43)
+# gel3<-gelman.diag(huh2, multivariate = FALSE)
+
+clustm3<-salso(out3m$Si)
+
+bubblePlot(s_coords_m$xmap, s_coords_m$ymap, clustm3, col = rainbow(length(unique(clustm3))), size = 0.7
+           , main = 'Clustered PC 3, MFPCA')
+
+##########################################################################################
+##########################################################################################
+##########################################################################################
+
+
+#Check k-means performance  here, k-medoids performance (?) aka PAM, and hierarchical clustering (maybe on this one)
+#
+
+#kmeans clustering real quick
+S1mat<-as.matrix(S1)
+S1m<- dim(S1mat)[1]
+S1m <- apply(S1mat,2,mean)
+S1sd <- apply(S1mat,2,sd)
+S1_std <- t((t(S1mat) - S1m)/S1sd)
+
+S2mat<-as.matrix(S2)
+S2m<- dim(S2mat)[1]
+S2m <- apply(S2mat,2,mean)
+S2sd <- apply(S2mat,2,sd)
+S2_std <- t((t(S2mat) - S2m)/S2sd)
+
+S3mat<-as.matrix(S3)
+S3m<- dim(S3mat)[1]
+S3m <- apply(S3mat,2,mean)
+S3sd <- apply(S3mat,2,sd)
+S3_std <- t((t(S3mat) - S3m)/S3sd)
+
+
+kms1<- kmeans(S1_std, centers = length(unique(clustm1)))
+kms2<- kmeans(S2_std, centers = length(unique(clustm2)))
+kms3<- kmeans(S3_std, centers = length(unique(clustm3)))
+
+
+
+# jpeg('Figures/X1_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, kms1$cluster, col = rainbow(length(kms1$centers))
+           , main = 'S1 K-Means')
+# dev.off()
+# jpeg('Figures/X2_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, kms2$cluster, col = rainbow(length(kms2$centers))
+           , main = 'S2 K-Means')
+# dev.off()
+# jpeg('Figures/Y1_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, kms3$cluster, col = rainbow(length(kms3$centers))
+           , main = 'S3 K-Means')
+# dev.off()
+
+
+
+##########################################################################################
+##########################################################################################
+##########################################################################################
+
+library(dbscan)
+
+#don't want the standardized ones here
+
+dbs1<- dbscan(as.matrix(S1), eps = .5)
+dbs2<- dbscan(as.matrix(S2), eps = .5)
+dbs3<- dbscan(as.matrix(S3), eps = .5)
+
+
+# jpeg('Figures/X1_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, dbs1$cluster, col = rainbow(length(unique(dbs1$cluster)))
+           , main = 'S1 DBSCAN')
+# dev.off()
+# jpeg('Figures/X2_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, dbs2$cluster, col = rainbow(length(unique(dbs2$cluster)))
+           , main = 'S2 DBSCAN')
+# dev.off()
+# jpeg('Figures/Y1_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, dbs3$cluster, col = rainbow(length(unique(dbs3$cluster)))
+           , main = 'S3 DBSCAN')
+# dev.off()
+
+##########################################################################################
+##########################################################################################
+##########################################################################################
+
+#K-medoids
+library(fpc)
+
+pams1<-pamk(S1)
+pams2<-pamk(S2)
+pams3<-pamk(S3)
+
+
+# jpeg('Figures/X1_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, pams1$pamobject[['clustering']]
+           , col = rainbow(length(unique(pams1$pamobject[['clustering']])))
+           , main = 'S1 PAM')
+# dev.off()
+# jpeg('Figures/X2_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, pams2$pamobject[['clustering']]
+           , col = rainbow(length(unique(pams2$pamobject[['clustering']])))
+           , main = 'S2 PAM')
+# dev.off()
+# jpeg('Figures/Y1_KM_1000.jpg')
+bubblePlot(s_coords1$xmap, s_coords1$ymap, pams3$pamobject[['clustering']]
+           , col = rainbow(length(unique(pams3$pamobject[['clustering']])))
+           , main = 'S3 PAM')
+# dev.off()
+
+
