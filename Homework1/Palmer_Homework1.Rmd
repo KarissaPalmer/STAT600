@@ -6,6 +6,7 @@ output:
   pdf_document:
     includes:
       in_header: preamble.tex
+  word_document: default
 ---
 
 ## Question 1
@@ -20,7 +21,12 @@ Make an \texttt{R} package called \texttt{SimpLin} for running a simple linear r
 
 *********************************************************************************
 
-**Answer:** Linked to Github.
+**Answer:** Linked to Github. To download follow: 
+\newline
+\texttt{https://github.com/KarissaPalmer/STAT600/tree/5cbac37a71d6e6458e8a076a8cfc6cd8901d12e3/Homework1/}
+\newline
+And choose the folder \texttt{SimpLin}. The associated vignette is in the folder \texttt{vignettes}.
+
 
 *********************************************************************************
 
@@ -30,13 +36,18 @@ Connect and manage the development of your \texttt{R} package with your GitHub a
 
 *********************************************************************************
 
+**Answer:** In Question 1. 
+
+*********************************************************************************
+\newpage
+
 ## Question 3
 
 Simulate 100 data sets with $n=100$ observations each, where $x \sim N(0,1)$ and error terms $\epsilon \sim N(0,1)$ with true regression coefficients $\beta_0=1$ and $\beta_1=-1$. Fit a linear regression model to each of the data sets using your package in (1) and the \texttt{lm()} function in \texttt{R} \textbf{in parallel}. Calculate the runtime for each of the data sets using both models. Note that you do not have to run in parallel using Rcpp.
 
 *********************************************************************************
 
-**Answer:**
+**Answer:** Below is the code for the simulated data. I used 6 cores to run the simulation and it took 0.116 seconds. 
 
 ```{r, echo = FALSE, results = 'hide', message=FALSE}
 library(foreach)
@@ -49,7 +60,7 @@ library(gridExtra)
 library(latex2exp)
 ```
 
-```{r}
+```{r, datasim, results = 'hide', message = FALSE}
 #First, simulate the data
 RNGkind("L'Ecuyer-CMRG")
 set.seed(23)
@@ -71,35 +82,15 @@ sim_data<- foreach(t = 1:100) %dopar% {
 stopImplicitCluster()
 
 #Save simulated data for easy loading for comparison in Q4
-saveRDS(sim_data, 'Sim_Data.RData')
+# saveRDS(sim_data, 'Sim_Data.RData')
 ```
 
-*********************************************************************************
-
-## Question 4
-
-Provide a table of summary statistics for the simulations including average runtime, bias, coverage probability (proportion of 95\% CIs that include the true regression coefficients), mean squared error for regression coefficients, and predictive mean squared error for $\hat{y}$ across all simulations for your model and \texttt{lm()}. Plot a histogram of the estimated regression coefficients $\hat{\beta}_0$ and $\hat{\beta}_1$ across all simulations. Comment on the performance of the methods. 
-
-*********************************************************************************
-
-**Answer:**
-
-```{r}
-#Report mean and sd of each of the asked things in the summary statistics table.
-mean_sd<- function(x){
-  avg<-round(mean(x), digits = 4)
-  sds<- round(sd(x), digits = 4)
-  paste0(avg, ' (SD = ', sds, ')')
-}
-
-```
-
-
-```{r}
+```{r, rcpp, echo = FALSE, results = 'hide'}
 #get the data we need using SimpLin
 # RNGkind("L'Ecuyer-CMRG")
 # set.seed(23)
 #don't need to set seeds b/c we're already using data we have.
+start1<- Sys.time()
 
 registerDoParallel(6)
 
@@ -121,13 +112,16 @@ summ_rcpp<- foreach(t = 1:100) %dopar% {
 
 stopImplicitCluster()
 
+difftime(Sys.time(), start1)
+
 ```
 
-```{r}
+```{r, rcode, echo = FALSE, results ='hide'}
 #Do something similar for R 
 
 # RNGkind("L'Ecuyer-CMRG")
 # set.seed(23)
+start2<-Sys.time()
 
 registerDoParallel(6)
 
@@ -149,10 +143,36 @@ summ_r<- foreach(t = 1:100) %dopar% {
 
 stopImplicitCluster()
 
+difftime(Sys.time(), start2)
+
+```
+
+When using applying the function \texttt{SimpLinR} and \texttt{lm()} I also used 6 cores each. The function \texttt{SimpLinR} took 0.2370 seconds to go through the simulations and the R function took 0.0957 seconds. The file on Github \texttt{Sim\_Data.RData} has the simulated data whose results may be checked. 
+
+*********************************************************************************
+\newpage
+
+## Question 4
+
+Provide a table of summary statistics for the simulations including average runtime, bias, coverage probability (proportion of 95\% CIs that include the true regression coefficients), mean squared error for regression coefficients, and predictive mean squared error for $\hat{y}$ across all simulations for your model and \texttt{lm()}. Plot a histogram of the estimated regression coefficients $\hat{\beta}_0$ and $\hat{\beta}_1$ across all simulations. Comment on the performance of the methods. 
+
+*********************************************************************************
+
+**Answer:**
+
+```{r, msd, echo = FALSE}
+#Report mean and sd of each of the asked things in the summary statistics table.
+mean_sd<- function(x){
+  avg<-round(mean(x), digits = 4)
+  sds<- round(sd(x), digits = 4)
+  paste0(avg, ' (SD = ', sds, ')')
+}
+
 ```
 
 
-```{r}
+
+```{r, sum_stat, echo = FALSE}
 #Get what we need for the summary statistics table.
 
 #average runtime for each simulation
@@ -216,10 +236,10 @@ kable(sum_stats, booktabs = T
 
 ```
 
-Since the outputs of \texttt{SimpLin} and \texttt{lm()} in terms of their estimated coefficients are the same for each data set, runtime is one of the more telling measurements for differences in approach. 
+Since the outputs of \texttt{SimpLin} and \texttt{lm()} in terms of their estimated coefficients are the same for each data set, runtime is one of the more telling measurements for differences in approach. We saw in Question 3 that the \texttt{lm()} function was approximately twice as fast, but on the individual basis our package (Rcpp) was faster than \texttt{lm()} while \texttt{lm()} had slightly more variability in the computation.
 
 
-```{r}
+```{r, hists, echo = FALSE}
 #Plot histograms
 coef_rcpp<- data.frame(coef_rcpp)
 b0_p<- ggplot(coef_rcpp, aes(x = X1))+
@@ -237,5 +257,21 @@ grid.arrange(b0_p,b1_p, ncol = 2)
 ```
 
 
-
 *********************************************************************************
+
+## Appendix
+
+```{r ref.label="rcpp",eval=FALSE}
+```
+
+```{r, ref.label='rcode', eval = FALSE}
+```
+
+```{r, ref.label = 'msd', eval = FALSE}
+```
+
+```{r, ref.label = 'sum_stat', eval = FALSE}
+```
+
+```{r, ref.label = 'hists', eval = FALSE}
+```
