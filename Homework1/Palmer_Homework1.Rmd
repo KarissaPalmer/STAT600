@@ -23,7 +23,7 @@ Make an \texttt{R} package called \texttt{SimpLin} for running a simple linear r
 
 **Answer:** Linked to Github. To download follow: 
 \newline
-\texttt{https://github.com/KarissaPalmer/STAT600/tree/5cbac37a71d6e6458e8a076a8cfc6cd8901d12e3/Homework1/}
+\texttt{https://github.com/KarissaPalmer/STAT600/tree/6d81cfc6393aba68d288d120456004d89d0131a5/Homework1/}
 \newline
 And choose the folder \texttt{SimpLin}. The associated vignette is in the folder \texttt{vignettes}.
 
