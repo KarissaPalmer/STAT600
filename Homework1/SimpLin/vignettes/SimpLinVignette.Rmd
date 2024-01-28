@@ -1,0 +1,113 @@
+---
+title: "SimpLinVignette"
+author: "Karissa Palmer"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SimpLinVignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(SimpLin)
+```
+
+
+## Package Description
+
+The package \texttt{SimpLin} utilizes Rcpp/RcppArmadillo to perform simple linear regression (SLR) on two input vectors, $\mathbf{x}$ and $\mathbf{y}$. 
+
+## Installation
+
+The package is available for installation via the author's Github account. Users may utilize the below code to install the package.
+
+```{r, eval = FALSE}
+require(devtools)
+install_github("KarissaPalmer/STAT600/Homework1/SimpLin", build_vignettes = TRUE)
+library(SimpLin)
+```
+
+## Using the Package
+
+What follows is a short tutorial on how to use the package \texttt{SimpLin}. An important note for users to remember is that the package will only take $n \times 1$ vectors as input and the vectors must be of the same length, as well as be numeric. The model that we are trying to fit with this package is always 
+\begin{align*}
+y &= \beta_0+\beta_1 x+\epsilon
+\end{align*}
+
+Moving to the example, we use the data set \texttt{mtcars} and will create a SLR model between horsepower and miles per gallon (mpg).
+
+```{r}
+data(mtcars)
+head(mtcars, n = 3)
+```
+We may visualize the relationship between horsepower and mpg below. 
+
+```{r, fig.width=6, fig.height=6}
+plot(mtcars$hp, mtcars$mpg)
+```
+
+Now, to use \texttt{SimpLin}, we use the function within the package \texttt{SimpLinR}. It will output the estimated regression coefficients for $\beta_0$ and $\beta_1$, as well as their standard errors and 95% confidence intervals, residuals, and predicted values all as a list. We have
+
+```{r}
+mod_output<- SimpLinR(x = mtcars$hp, y = mtcars$mpg)
+```
+
+
+We may access each element of the list to create plots, tables, or do other analysis. For example, the confidence intervals and standard errors of $\beta_0$ and $\beta_1$ can be accessed as follows.  
+
+
+```{r}
+mod_output$Conf_Ints
+mod_output$SEs
+```
+
+We have that the estimates for $\beta_0$ and $\beta_1$ themselves are  
+
+
+```{r}
+mod_output$Coefficients
+```
+
+which indicates that the line of best fit (LOBF) is 
+
+\begin{align*}
+\hat{y} &= 30.0989+(-0.0682)x
+\end{align*}
+
+Plotting the residuals, below.
+
+
+```{r, fig.width=6, fig.height=6}
+plot(mtcars$hp, mod_output$Residuals)
+```
+
+
+The predicted values along with the true values.
+
+
+```{r, fig.width=6, fig.height=6}
+plot(mtcars$hp, mtcars$mpg, col = 'red')
+points(mtcars$hp, mod_output$Pred_Vals, col = 'blue')
+```
+
+
+## Troubleshooting
+
+As mentioned earlier in the document, users must make sure that the vectors input in the function \texttt{SimpLinR} are of the same length and are numeric. To demonstrate the errors that users may see if either of these are violated by the input, we have the following.
+
+
+```{r, error = TRUE}
+#Vectors of different lengths
+SimpLinR(x = c(1,1), y = c(1))
+
+#Non-numeric entries in a vector
+SimpLinR(x = c(1,1), y = c(1, 'b'))
+```

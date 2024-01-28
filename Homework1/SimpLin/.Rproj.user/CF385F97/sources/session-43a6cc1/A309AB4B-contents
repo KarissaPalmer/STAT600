@@ -1,5 +1,5 @@
 ---
-title: "SimpLin Vignette"
+title: "SimpLinVignette"
 author: "Karissa Palmer"
 date: "`r Sys.Date()`"
 output: rmarkdown::pdf_document
@@ -31,7 +31,7 @@ The package is available for installation via the author's Github account. Users
 
 ```{r, eval = FALSE}
 require(devtools)
-# install_github()
+install_github("KarissaPalmer/STAT600/Homework1/SimpLin", build_vignettes = TRUE)
 library(SimpLin)
 ```
 

@@ -9,3 +9,7 @@ Description: After taking the two input vectors, this package utilizes Rcpp/Rcpp
 License: Creative Commons
 Imports: Rcpp (>= 1.0.11)
 LinkingTo: Rcpp, RcppArmadillo
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

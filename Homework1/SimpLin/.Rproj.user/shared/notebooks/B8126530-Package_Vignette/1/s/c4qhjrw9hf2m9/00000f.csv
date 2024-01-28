@@ -1,0 +1,1 @@
+"0","mod_output<- SimpLinR(x = mtcars$hp, y = mtcars$mpg)"
