@@ -90,7 +90,7 @@ stopImplicitCluster()
 # RNGkind("L'Ecuyer-CMRG")
 # set.seed(23)
 #don't need to set seeds b/c we're already using data we have.
-start1<- Sys.time()
+# start1<- Sys.time()
 
 registerDoParallel(6)
 
@@ -98,7 +98,7 @@ summ_rcpp<- foreach(t = 1:100) %dopar% {
   #start time
   start <- Sys.time()
   
-  mod_rcpp<- SimpLinR(sim_data[[t]][, "x"], sim_data[[t]][, "y"])
+  mod_rcpp<- SimpLinR(sim_data[[t]][,1], sim_data[[t]][, 2])
   tot_time<- difftime(Sys.time(), start)
   
   #Make nice assignments from output for what we need
@@ -107,12 +107,13 @@ summ_rcpp<- foreach(t = 1:100) %dopar% {
   pred_rcpp<- mod_rcpp$Pred_Vals
   
   #Put it all in a list
-  list(time = tot_time, coef = coef_rcpp, ci = ci_rcpp, pred = pred_rcpp)
+  list(time = tot_time
+       , coef = coef_rcpp, ci = ci_rcpp, pred = pred_rcpp)
 }
 
 stopImplicitCluster()
 
-difftime(Sys.time(), start1)
+# difftime(Sys.time(), start1)
 
 ```
 
@@ -121,7 +122,7 @@ difftime(Sys.time(), start1)
 
 # RNGkind("L'Ecuyer-CMRG")
 # set.seed(23)
-start2<-Sys.time()
+# start2<-Sys.time()
 
 registerDoParallel(6)
 
@@ -138,16 +139,17 @@ summ_r<- foreach(t = 1:100) %dopar% {
   pred_r<- as.matrix(mod_r$fitted.values)
   
   #Put it all in a list
-  list(time = tot_time, coef = coef_r, ci = ci_r, pred = pred_r)
+  list(time = tot_time
+       , coef = coef_r, ci = ci_r, pred = pred_r)
 }
 
 stopImplicitCluster()
 
-difftime(Sys.time(), start2)
+# difftime(Sys.time(), start2)
 
 ```
 
-When using applying the function \texttt{SimpLinR} and \texttt{lm()} I also used 6 cores each. The function \texttt{SimpLinR} took 0.2370 seconds to go through the simulations and the R function took 0.0957 seconds. The file on Github \texttt{Sim\_Data.RData} has the simulated data whose results may be checked. 
+When using applying the function \texttt{SimpLinR} and \texttt{lm()} I also used 6 cores each. The function \texttt{SimpLinR} took 0.2370 seconds to go through the simulations and the R function took 0.0957 seconds. However, it is of note that when I commented out the parts where I was getting the necessary data from the functions, \texttt{SimpLinR} was marginally faster than \texttt{lm()}. The file on Github \texttt{Sim\_Data.RData} has the simulated data whose results may be checked.
 
 *********************************************************************************
 \newpage
@@ -236,7 +238,7 @@ kable(sum_stats, booktabs = T
 
 ```
 
-Since the outputs of \texttt{SimpLin} and \texttt{lm()} in terms of their estimated coefficients are the same for each data set, runtime is one of the more telling measurements for differences in approach. We saw in Question 3 that the \texttt{lm()} function was approximately twice as fast, but on the individual basis our package (Rcpp) was faster than \texttt{lm()} while \texttt{lm()} had slightly more variability in the computation.
+Since the outputs of \texttt{SimpLin} and \texttt{lm()} in terms of their estimated coefficients are the same for each data set, runtime is one of the more telling measurements for differences in approach. We saw in Question 3 that the \texttt{lm()} function was approximately twice as fast when including extracting desired data, but on the individual basis of computation time our package (Rcpp) was about ten times faster than \texttt{lm()} while \texttt{lm()} had slightly more variability in the computation.
 
 
 ```{r, hists, echo = FALSE}
